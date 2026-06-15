@@ -7,7 +7,7 @@ TARGET  = bacara
 
 SRCS = src/main.S \
        src/display.S \
-       src/interrupts.S \
+       src/interruptions.S \
        src/game.S \
        src/lcd_interface.c
 
