@@ -19,9 +19,7 @@ banker_score:   .skip 1      ; 0..9
     .global player_cards
 player_cards:   .skip 3      ; ranks 1..13 (3a carta = 0 se nao usada)
 
-    .global banker_cardsCauã Marinho Ferreira de Almeida
-23:58
-
+    .global banker_cards
 banker_cards:   .skip 3
 
     .global player_count
