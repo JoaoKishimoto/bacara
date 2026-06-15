@@ -222,3 +222,59 @@ Na `decide_banca_p3` se o jogador comprou uma carta a banca não usa a regra sim
 ### 5.7. define_vencedor — Comparação final dos placares
 
 E por fim, a `define_vencedor` (corrigido o nome do seu código) que faz uma comparação do pontos utilizando os registradores, e devolve se o jogador perdeu, ganhou, ou se foi empate
+
+## Parte V: Documentação do Display LCD 16x2 (HD44780)
+
+### 1. Visão geral
+
+O display de LCD é o principal canal de comunicação com o usuário, responsável por exibir as mensagens de estado (apostas e resultados), o placar e as cartas sorteadas. 
+Utilizamos um display 16x2 (controlador HD44780). 
+A arquitetura foi estabelecida em uma ligação paralela direta aos pinos da PORTC do ATmega328P, operando no modo de 4 bits de dados e configurada estritamente como write-only (apenas escrita).
+
+## 2. Decisão de projeto
+
+Como mencionado anteriormente na Parte I - 3.3 Interface do LCD (Alteração de Projeto), o planejamento original do projeto contava com um módulo adaptador PCF8574 para comunicar o LCD via I2C. Contudo, optou-se pela ligação paralela direta devido a problemas de confiabilidade física na ligação do PCF8574 na protoboard, que causavam conexões intermitentes e a exibição de caracteres corrompidos na tela. Para compensar o gasto de portas da ligação paralela, a comunicação foi implementada no modo de 4 bits. Como o sistema precisa apenas atualizar a tela e não ler seu conteúdo atual, o pino Read/Write (R/W) do LCD foi fixado no GND.
+
+## 3. Pinagem
+
+Os 6 pinos de controle e dados foram alocados nos bits 0 a 5 da Porta C. A conexão física segue a tabela abaixo:
+
+| Pino do ATmega328P    | Pino do LCD | Função                                   |
+|-----------------------|-------------|------------------------------------------|
+| PC0 (A0)              | RS          | Register Select (0 = Comando, 1 = Dado)  |
+| PC1 (A1)              | EN          | Enable                                   |
+| PC2 (A2)              | D4          | Linha de Dados 4                         |
+| PC3 (A3)              | D5          | Linha de Dados 5                         |
+| PC4 (A4)              | D6          | Linha de Dados 6                         |
+| PC5 (A5)              | D7          | Linha de Dados 7                         |
+| GND                   | R/W         | Read/Write (Sempre 0 = Write-only)       |
+| GND                   | VSS         | Aterramento (Power)                      |
+| 5V                    | VDD         | Alimentação (Power)                      |
+| GND                   | V0          | Contraste dos caracteres (fixo no máximo, V0 em GND)|
+| 5V / GND              | A / K       | Positivo e Negativo do Backlight         |
+
+## 4. Modo de operação
+
+Como o barramento possui apenas 4 linhas de dados (D4 a D7), o caminho de um byte até a tela acontece através do seu particionamento. Cada byte é enviado quebrado em dois blocos de 4 bits (nibbles), sendo o "nibble alto" enviado primeiro, seguido imediatamente pelo "nibble baixo". 
+Após apresentar o nibble nas portas de dados, é gerado um pulso no pino Enable (EN), e o LCD captura a informação na borda de descida desse sinal. 
+Como não estamos lendo a busy flag do LCD (já que o R/W está no GND), a sincronização para não sobrecarregar o display é garantida por meio de funções de atraso (_delay_us e _delay_ms) que estipulam um tempo de pior caso entre um envio e outro, garantindo que o hardware tenha tempo hábil para processar tudo.
+
+## 5. Inicialização
+
+Para preparar o display em modo de 4 bits, o lcd_init() executa, na partida, uma sequência rígida descrita pelo datasheet da fabricante (a mesma sequência está no helper lcd_soft_reset(), reutilizado pelo lcd_clear()). Essa rotina aplica uma sequência rígida descrita pelo datasheet da fabricante: enviar o comando de reset 0x03 três vezes consecutivas, com intervalos específicos (5ms e 150µs), e por fim um 0x02. Isso é feito puramente por conta de sincronização: ele garante que o controlador interno recomece do zero e assuma um estado perfeitamente conhecido antes de configurarmos o display definitivamente para 2 linhas de texto (modo 4 bits, fonte 5x8).
+
+## 6. Header
+
+O contrato (lcd_interface.h) expõe apenas o necessário para a lógica do jogo invocar a tela:
+
+| Assinatura da Função | Descrição |
+|---|---|
+| `void lcd_init(void)` | Configura a PORTC como saída e executa a sequência de reset e inicialização do display |
+| `void lcd_clear(void)` | Limpa a tela inteira e reseta o cursor para o topo |
+| `void lcd_message(uint8_t msg_id)` | Recebe um ID (código numérico contido no `defs.h`) e imprime mensagens de sistema da rodada (ex: "Faca sua aposta", "Jogador vence") |
+| `void lcd_scores(uint8_t player, uint8_t banker)` | Recebe os dois placares numéricos e renderiza na tela a pontuação da Banca e do Jogador |
+| `void lcd_cards(uint8_t who)` | Imprime as "faces" literais (ex: A, K, 2, Q) das cartas de quem foi requisitado (0 para Jogador, 1 para Banca) buscando na memória interna |
+
+## 7. Interface com o Assembly
+
+A integração de dados entre a máquina de estados em Assembly e o arquivo C é baseada na convenção de chamadas (ABI avr-gcc) e em ponteiros fixos na memória. Variáveis cruciais para o rastreamento do jogo, como player_cards, banker_cards, player_count e banker_count, são marcadas como extern volatile no código em C. Quando o Assembly altera o estado da mão e precisa mostrá-la, ele chama a rotina gráfica em C; essa, por sua vez, usa as declarações externas como ponte para ir até a SRAM (Seção.bss) ler e formatar aqueles valores em caracteres. As mensagens de estado são acionadas quando o Assembly invoca a rotina passando o ID (ex: macros MSG_* através do registrador r24)
