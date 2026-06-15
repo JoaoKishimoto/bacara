@@ -142,7 +142,7 @@ rjmp (sem jogada)
 
 
 
-## Parte III: Documentação de Software — `interruptions.S`
+## Parte III: Documentação de Software — `display.S`
 
 ---
 
