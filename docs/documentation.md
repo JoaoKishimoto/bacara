@@ -191,4 +191,34 @@ Esta sub-rotina é responsável por aplicar o padrão de bits correspondente ao 
 
 Na segunda parte, a rotina repete a operação, mas calculando em `font_pb`, lendo o padrão correspondente na memória flash e atualizando os bits inferiores de `PORTB` (0 a 2), usando outra máscara lógica para preservar perfeitamente o estado dos bits superiores dessa porta. Finalizada a escrita, a sub-rotina retorna o controle para a rotina de interrupção.
 
-```
+---
+
+## Parte IV: Documentação de Software — `game.S`
+
+### 5.1. sorteia_carta — Distribuição e sorteio das cartas
+
+A lógica do jogo funciona com uma função `sorteia_carta` que realizará a distribuição em sorteio das cartas para o jogador e a banca, esse sorteio é realizado com uma variavel `rng_state` que tem os seus bits deslocados para a direita, depois disso, utilizaremos uma subtração sucessiva do 13 (que seria equivalente a dividir por 13) até retornar um valor entre 0 e 12, somando 1 unidade em seguida.
+
+### 5.2. valor_carta — Verificação do valor da carta
+
+Depois, a função `valor_carta` irá verificar o valor, em que, se for de 1 a 9 ela devolve o próprio numero, se for 10,11,12 ou 13 devolve 0, que são os valores das respectivas cartas no jogo.
+
+### 5.3. calcula_pontuacao — Somatório dos pontos da mão
+
+Para saber quanto cada um tem criamos a função `calcula_pontuacao` que vai utilizar os registradores r24, r22 e r20 (para representar a terceira carta) que converte cada uma e soma tudo, como o jogo não pode passar de 9, realizamos o modulo de 10 caso a soma seja maior de 10.
+
+### 5.4. checa_natural — Busca por 8 ou 9 iniciais
+
+A função `checa_natural` busca um natural no bacará, se for 8 ou 9 bloqueando a compra de novas cartas e indo para o resultado final.
+
+### 5.5. decide_simples — Regra básica da terceira carta
+
+Diante disso, dividimos a regra da terceira carta em `decide_simples` e `decide_banca_p3`, na `decide_simples` verifica se tem de 0 a 5, se tiver é obrigado a comprar, caso contrário, é obrigado a parar.
+
+### 5.6. decide_banca_p3 — Tabela rigorosa de compra da banca
+
+Na `decide_banca_p3` se o jogador comprou uma carta a banca não usa a regra simples, ela utiliza uma tabela rigorosa que cruza o placar atual dela com o valor exato da carta que o jogador acabou de pescar, decidindo se ela compra ou fica.
+
+### 5.7. define_vencedor — Comparação final dos placares
+
+E por fim, a `define_vencedor` (corrigido o nome do seu código) que faz uma comparação do pontos utilizando os registradores, e devolve se o jogador perdeu, ganhou, ou se foi empate
