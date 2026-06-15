@@ -56,7 +56,17 @@ RW deve ser ligado ao GND (modo escrita permanente).
 | Apostar em Empate  | D13          | PB5       |
 
 ---
+## Integrantes
 
+- Cauã Marinho Ferreira de Almeida - Lógica do jogo
+- João Luis da Cruz de Souza - Interrupção e multiplexação 7-segmentos
+- João Victor Marques Kishimoto - Main, defs e integração das partes
+- Júlia Teixeira Golçalves - Hardware e circuito (simulide)
+- Maria Clara Andrade Magalhães Paternostro D'Oliveira - interface LCD
+**Vale lembrar que todos os integrantes comentaram e documentaram sua parte do código,**
+**além de ajudar as outras partes que precisaram.**
+
+---
 ## Como jogar
 
 1. Ao ligar, o LCD exibe "Faca sua aposta" e os displays mostram `- -`.
