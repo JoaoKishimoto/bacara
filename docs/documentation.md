@@ -47,7 +47,7 @@ O controle de acionamento é feito por dois transistores NPN operando como chave
 
 #### 3.3. Interface do LCD (Alteração de Projeto)
 
-Inicialmente planejado para operar via protocolo I2C (módulo PCF8574), o diagrama final consolidou a conexão do display LCD 16x2 de forma direta no modo de 4 bits. Os pinos de controle (RS e Enable) e o barramento de dados (D4-D7) foram mapeados para as portas A0 a A5 do Arduino. Como essas portas analógicas também operam perfeitamente como GPIOs (saídas digitais), essa configuração remove a necessidade do módulo I2C adicional, simplifica a fiação na protoboard física e elimina potenciais conflitos de temporização no barramento durante a ocorrência das interrupções do jogo. O pino RW do LCD foi permanentemente aterrado, já que o sistema fará apenas operações de escrita na tela.
+Inicialmente planejada para operar via protocolo I2C (módulo PCF8574), a conexão do display LCD 16x2 foi consolidada no diagrama final de forma direta, no modo de 4 bits. Os pinos de controle (RS e Enable) e o barramento de dados (D4–D7) foram mapeados para os pinos A0 a A5 do Arduino. Como esses pinos analógicos também operam perfeitamente como GPIOs (saídas digitais), essa configuração remove a necessidade do módulo I2C adicional, remove o chip PCF8574 e toda a fiação intermediária entre ele e o LCD e remove a dependência da ligação serial discreta, que se mostrou instável. O pino R/W do LCD foi permanentemente aterrado, já que o sistema fará apenas operações de escrita na tela.
 
 ---
 
@@ -195,30 +195,169 @@ Na segunda parte, a rotina repete a operação, mas calculando em `font_pb`, len
 
 ## Parte IV: Documentação de Software — `game.S`
 
-### 5.1. sorteia_carta — Distribuição e sorteio das cartas
+## 1. Visão Geral
 
-A lógica do jogo funciona com uma função `sorteia_carta` que realizará a distribuição em sorteio das cartas para o jogador e a banca, esse sorteio é realizado com uma variavel `rng_state` que tem os seus bits deslocados para a direita, depois disso, utilizaremos uma subtração sucessiva do 13 (que seria equivalente a dividir por 13) até retornar um valor entre 0 e 12, somando 1 unidade em seguida.
+Este arquivo é responsável por toda a lógica do jogo. É ele que cuida do sorteio das cartas, da conversão de cada carta no seu valor, do somatório dos pontos de cada mão e das regras que decidem o andamento da rodada, incluindo a compra da terceira carta e a definição do vencedor.
 
-### 5.2. valor_carta — Verificação do valor da carta
+As funções recebem valores nos registradores, fazem o seu cálculo e devolvem o resultado, mantendo a lógica do jogo separada da parte de interrupções e de exibição, permitindo que cada regra seja testada de forma isolada.
 
-Depois, a função `valor_carta` irá verificar o valor, em que, se for de 1 a 9 ela devolve o próprio numero, se for 10,11,12 ou 13 devolve 0, que são os valores das respectivas cartas no jogo.
+---
 
-### 5.3. calcula_pontuacao — Somatório dos pontos da mão
+## 2. Rotinas
 
-Para saber quanto cada um tem criamos a função `calcula_pontuacao` que vai utilizar os registradores r24, r22 e r20 (para representar a terceira carta) que converte cada uma e soma tudo, como o jogo não pode passar de 9, realizamos o modulo de 10 caso a soma seja maior de 10.
+### 2.1. sorteia_carta — Distribuição e sorteio das cartas
 
-### 5.4. checa_natural — Busca por 8 ou 9 iniciais
+A função `sorteia_carta` é responsável pela distribuição e pelo sorteio das cartas do jogador e da banca. O sorteio parte da variável `rng_state`, que tem os seus bits deslocados para a direita; em seguida, aplicamos uma subtração sucessiva de 13 (equivalente a dividir por 13) até obter um valor entre 0 e 12, ao qual somamos 1 unidade. O resultado é o rank da carta, de 1 a 13.
 
-A função `checa_natural` busca um natural no bacará, se for 8 ou 9 bloqueando a compra de novas cartas e indo para o resultado final.
+### 2.2. valor_carta — Verificação do valor da carta
 
-### 5.5. decide_simples — Regra básica da terceira carta
+Depois, a função `valor_carta` converte o rank no valor que a carta tem no jogo: se estiver entre 1 e 9, devolve o próprio número; se for 10, 11, 12 ou 13, devolve 0.
 
-Diante disso, dividimos a regra da terceira carta em `decide_simples` e `decide_banca_p3`, na `decide_simples` verifica se tem de 0 a 5, se tiver é obrigado a comprar, caso contrário, é obrigado a parar.
+### 2.3. calcula_pontuacao — Somatório dos pontos da mão
 
-### 5.6. decide_banca_p3 — Tabela rigorosa de compra da banca
+Para saber a pontuação de cada lado, criamos a função `calcula_pontuacao`, que recebe até três cartas nos registradores `r24`, `r22` e `r20` (este último para representar a terceira carta, quando houver). A rotina converte cada carta no seu valor e soma tudo; como a pontuação no jogo não pode passar de 9, aplicamos o módulo 10 sempre que a soma chega a 10 ou mais.
 
-Na `decide_banca_p3` se o jogador comprou uma carta a banca não usa a regra simples, ela utiliza uma tabela rigorosa que cruza o placar atual dela com o valor exato da carta que o jogador acabou de pescar, decidindo se ela compra ou fica.
+### 2.4. checa_natural — Busca por 8 ou 9 iniciais
 
-### 5.7. define_vencedor — Comparação final dos placares
+A função `checa_natural` procura um natural no bacará: se o jogador ou a banca somar 8 ou 9 nas cartas iniciais, ela bloqueia a compra de novas cartas e o jogo segue direto para o resultado final.
 
-E por fim, a `define_vencedor` (corrigido o nome do seu código) que faz uma comparação do pontos utilizando os registradores, e devolve se o jogador perdeu, ganhou, ou se foi empate
+### 2.5. decide_simples — Regra básica da terceira carta
+
+Diante disso, dividimos a regra da terceira carta em duas funções: `decide_simples` e `decide_banca_p3`. A `decide_simples` verifica o placar: se estiver entre 0 e 5, o lado é obrigado a comprar; caso contrário, é obrigado a parar.
+
+### 2.6. decide_banca_p3 — Tabela rigorosa de compra da banca
+
+Na `decide_banca_p3`, quando o jogador comprou uma carta, a banca não usa a regra simples: ela utiliza uma tabela rigorosa que cruza o seu placar atual com o valor exato da carta que o jogador acabou de comprar, decidindo entre comprar ou ficar.
+
+### 2.7. define_vencedor — Comparação final dos placares
+
+Por fim, a `define_vencedor` faz a comparação dos pontos dos dois lados utilizando os registradores e devolve o desfecho da rodada: se o jogador perdeu, ganhou ou se foi empate.
+
+## Parte V: Documentação do Display LCD 16x2 (HD44780)
+
+### 1. Visão geral
+
+O display de LCD é o principal canal de comunicação com o usuário, responsável por exibir as mensagens de estado (apostas e resultados), o placar e as cartas sorteadas. 
+Utilizamos um display 16x2 (controlador HD44780). 
+A arquitetura foi estabelecida em uma ligação paralela direta aos pinos da PORTC do ATmega328P, operando no modo de 4 bits de dados e configurada estritamente como write-only (apenas escrita).
+
+## 2. Decisão de projeto
+
+Como mencionado anteriormente na Parte I - 3.3 Interface do LCD (Alteração de Projeto), o planejamento original do projeto contava com um módulo adaptador PCF8574 para comunicar o LCD via I2C. Contudo, optou-se pela ligação paralela direta devido a problemas de confiabilidade física na ligação do PCF8574 na protoboard, que causavam conexões intermitentes e a exibição de caracteres corrompidos na tela. Para compensar o gasto de portas da ligação paralela, a comunicação foi implementada no modo de 4 bits. Como o sistema precisa apenas atualizar a tela e não ler seu conteúdo atual, o pino Read/Write (R/W) do LCD foi fixado no GND.
+
+## 3. Pinagem
+
+Os 6 pinos de controle e dados foram alocados nos bits 0 a 5 da Porta C. A conexão física segue a tabela abaixo:
+
+| Pino do ATmega328P    | Pino do LCD | Função                                   |
+|-----------------------|-------------|------------------------------------------|
+| PC0 (A0)              | RS          | Register Select (0 = Comando, 1 = Dado)  |
+| PC1 (A1)              | EN          | Enable                                   |
+| PC2 (A2)              | D4          | Linha de Dados 4                         |
+| PC3 (A3)              | D5          | Linha de Dados 5                         |
+| PC4 (A4)              | D6          | Linha de Dados 6                         |
+| PC5 (A5)              | D7          | Linha de Dados 7                         |
+| GND                   | R/W         | Read/Write (Sempre 0 = Write-only)       |
+| GND                   | VSS         | Aterramento (Power)                      |
+| 5V                    | VDD         | Alimentação (Power)                      |
+| GND                   | V0          | Contraste dos caracteres (fixo no máximo, V0 em GND)|
+| 5V / GND              | A / K       | Positivo e Negativo do Backlight         |
+
+## 4. Modo de operação
+
+Como o barramento possui apenas 4 linhas de dados (D4 a D7), o caminho de um byte até a tela acontece através do seu particionamento. Cada byte é enviado quebrado em dois blocos de 4 bits (nibbles), sendo o "nibble alto" enviado primeiro, seguido imediatamente pelo "nibble baixo". 
+Após apresentar o nibble nas portas de dados, é gerado um pulso no pino Enable (EN), e o LCD captura a informação na borda de descida desse sinal. 
+Como não estamos lendo a busy flag do LCD (já que o R/W está no GND), a sincronização para não sobrecarregar o display é garantida por meio de funções de atraso (_delay_us e _delay_ms) que estipulam um tempo de pior caso entre um envio e outro, garantindo que o hardware tenha tempo hábil para processar tudo.
+
+## 5. Inicialização
+
+Para preparar o display em modo de 4 bits, o lcd_init() executa, na partida, uma sequência rígida descrita pelo datasheet da fabricante (a mesma sequência está no helper lcd_soft_reset(), reutilizado pelo lcd_clear()). Essa rotina aplica uma sequência rígida descrita pelo datasheet da fabricante: enviar o comando de reset 0x03 três vezes consecutivas, com intervalos específicos (5ms e 150µs), e por fim um 0x02. Isso é feito puramente por conta de sincronização: ele garante que o controlador interno recomece do zero e assuma um estado perfeitamente conhecido antes de configurarmos o display definitivamente para 2 linhas de texto (modo 4 bits, fonte 5x8).
+
+## 6. Header
+
+O contrato (lcd_interface.h) expõe apenas o necessário para a lógica do jogo invocar a tela:
+
+| Assinatura da Função | Descrição |
+|---|---|
+| `void lcd_init(void)` | Configura a PORTC como saída e executa a sequência de reset e inicialização do display |
+| `void lcd_clear(void)` | Limpa a tela inteira e reseta o cursor para o topo |
+| `void lcd_message(uint8_t msg_id)` | Recebe um ID (código numérico contido no `defs.h`) e imprime mensagens de sistema da rodada (ex: "Faca sua aposta", "Jogador vence") |
+| `void lcd_scores(uint8_t player, uint8_t banker)` | Recebe os dois placares numéricos e renderiza na tela a pontuação da Banca e do Jogador |
+| `void lcd_cards(uint8_t who)` | Imprime as "faces" literais (ex: A, K, 2, Q) das cartas de quem foi requisitado (0 para Jogador, 1 para Banca) buscando na memória interna |
+
+## 7. Interface com o Assembly
+
+A integração de dados entre a máquina de estados em Assembly e o arquivo C é baseada na convenção de chamadas (ABI avr-gcc) e em ponteiros fixos na memória. Variáveis cruciais para o rastreamento do jogo, como player_cards, banker_cards, player_count e banker_count, são marcadas como extern volatile no código em C. Quando o Assembly altera o estado da mão e precisa mostrá-la, ele chama a rotina gráfica em C; essa, por sua vez, usa as declarações externas como ponte para ir até a SRAM (Seção.bss) ler e formatar aqueles valores em caracteres. As mensagens de estado são acionadas quando o Assembly invoca a rotina passando o ID (ex: macros MSG_* através do registrador r24)
+
+---
+## Parte VI: Documentação de Software — `defs.h`
+## 1. O que este arquivo faz
+
+Cabeçalho compartilhado por todos os módulos do projeto (C e Assembly). Centraliza as constantes numéricas que os demais arquivos precisam conhecer, de forma que alterar um valor aqui se propaga para todo o sistema.
+
+---
+## 2. Grupos de definições
+
+**Máquina de estados (`game_state`):** cinco estados que representam o ciclo de uma rodada — `ST_IDLE` (aguardando aposta), `ST_BET` (aposta confirmada), `ST_DEAL` (distribuição inicial), `ST_THIRD` (terceira carta) e `ST_RESULT` (exibição do resultado).
+
+**Apostas (`bet_type`):** identificadores das três opções de aposta — `BET_PLAYER`, `BET_BANKER` e `BET_TIE` — mais `BET_NONE` para o estado sem aposta.
+
+**Resultado (`result`):** códigos de desfecho da rodada — `RES_PLAYER`, `RES_BANKER` e `RES_TIE`.
+
+**Flags (`flags`):** bit `FLG_NEW_BET` (bit 0), levantado pelas ISRs ao registrar uma aposta e consumido pelo laço principal em `main.S`.
+
+**Mensagens do LCD:** dez constantes (`MSG_PLACE_BET` a `MSG_YOU_LOSE`) usadas como argumento de `lcd_message` para selecionar o texto a exibir.
+
+**LCD e displays:** pinos de controle e dados do LCD em PORTC (A0–A5), agrupados na máscara `LCD_DDR_MASK`. Para os displays de 7 segmentos, `DISP_BLANK` (10) apaga o display e `DISP_DASH` (11) exibe um traço no estado ocioso.
+
+---
+## Parte VII: Documentação de Software — `main.S`
+## 1. O que este arquivo faz
+Ponto de entrada do firmware. Declara todas as variáveis globais do sistema na SRAM, inicializa o hardware e executa continuamente a máquina de estados que governa uma partida de Bacará.
+
+---
+## 2. Variáveis globais na SRAM (`.bss`)
+
+Declaradas como `.global` e acessadas pelos demais módulos via `lds`/`sts`.
+
+| Variável       | Tamanho | Conteúdo                                                         |
+| :------------- | :-----: | :--------------------------------------------------------------- |
+| `game_state`   | 1 byte  | Estado atual da máquina (`ST_IDLE` … `ST_RESULT`)               |
+| `bet_type`     | 1 byte  | Aposta do usuário (`BET_NONE` … `BET_TIE`)                      |
+| `player_score` | 1 byte  | Pontuação atual do Jogador (0–9)                                 |
+| `banker_score` | 1 byte  | Pontuação atual da Banca (0–9)                                   |
+| `player_cards` | 3 bytes | Ranks das cartas do Jogador; índice 2 = 0 se terceira não usada  |
+| `banker_cards` | 3 bytes | Ranks das cartas da Banca; índice 2 = 0 se terceira não usada   |
+| `player_count` | 1 byte  | Número de cartas do Jogador (2 ou 3)                             |
+| `banker_count` | 1 byte  | Número de cartas da Banca (2 ou 3)                               |
+| `rng_state`    | 2 bytes | Estado do LFSR para geração pseudoaleatória de cartas            |
+| `result`       | 1 byte  | Resultado da rodada (`RES_BANKER`, `RES_PLAYER`, `RES_TIE`)     |
+| `disp_left`    | 1 byte  | Índice de fonte do display esquerdo (Jogador)                    |
+| `disp_right`   | 1 byte  | Índice de fonte do display direito (Banca)                       |
+| `flags`        | 1 byte  | Bits de comunicação ISR→main (bit 0 = `FLG_NEW_BET`)            |
+
+---
+## 3. Rotinas
+### 3.1. main — Inicialização
+
+Configura a pilha em `RAMEND`, define os valores iniciais de todas as variáveis e chama `display_init`, `buttons_init`, `sei` e `lcd_init` nessa ordem. O `sei` é emitido antes do `lcd_init` para que o display de 7 segmentos já esteja operacional, independente do tempo de inicialização do LCD. Por fim, exibe `MSG_PLACE_BET` e cai no laço principal.
+
+---
+### 3.2. main_loop — Laço principal
+Lê `game_state` e redireciona para o tratador correspondente via cadeia de comparações. Os cinco tratadores são:
+
+- **`state_idle`:** aguarda o flag `FLG_NEW_BET` ser levantado por uma ISR; quando detectado, avança para `ST_BET`.
+- **`state_bet`:** consome `FLG_NEW_BET`, semeia o LFSR com `TCNT2` na primeira aposta da sessão e exibe a mensagem de confirmação antes de avançar para `ST_DEAL`.
+- **`state_deal`:** sorteia duas cartas para cada lado, calcula as pontuações iniciais, atualiza displays e LCD; se houver natural (8 ou 9), chama `finalize_round` diretamente, senão avança para `ST_THIRD`.
+- **`state_third`:** aplica as regras oficiais da terceira carta, usando `decide_simples` para o Jogador e `decide_banca_p3` para a Banca quando o Jogador comprou; atualiza displays e LCD e finaliza com `finalize_round`.
+- **`state_result`:** aguarda, descarta novas apostas chegadas durante a exibição, restaura as variáveis para o estado ocioso e exibe `MSG_PLACE_BET`.
+
+---
+
+### 3.3. finalize_round
+Calcula o vencedor com `define_vencedor`, exibe as pontuações finais com `lcd_scores` e depois mostra quem ganhou a rodada. Em seguida, cruza `bet_type` com `result` para determinar o desfecho do apostador: se acertou, exibe `"8 8"` nos displays e `MSG_YOU_WIN`; se errou, exibe `"0 0"` e `MSG_YOU_LOSE`. Por fim, grava `ST_RESULT` em `game_state`.
+
+---
+### 3.4. pause_2s
+Busy-wait de aproximadamente 2 segundos a 16 MHz, implementado com três laços aninhados nos registradores `r18`–`r20`. As interrupções continuam funcionando normalmente durante a pausa.
+
