@@ -47,7 +47,7 @@ O controle de acionamento é feito por dois transistores NPN operando como chave
 
 #### 3.3. Interface do LCD (Alteração de Projeto)
 
-Inicialmente planejado para operar via protocolo I2C (módulo PCF8574), o diagrama final consolidou a conexão do display LCD 16x2 de forma direta no modo de 4 bits. Os pinos de controle (RS e Enable) e o barramento de dados (D4-D7) foram mapeados para as portas A0 a A5 do Arduino. Como essas portas analógicas também operam perfeitamente como GPIOs (saídas digitais), essa configuração remove a necessidade do módulo I2C adicional, simplifica a fiação na protoboard física e elimina potenciais conflitos de temporização no barramento durante a ocorrência das interrupções do jogo. O pino RW do LCD foi permanentemente aterrado, já que o sistema fará apenas operações de escrita na tela.
+Inicialmente planejada para operar via protocolo I2C (módulo PCF8574), a conexão do display LCD 16x2 foi consolidada no diagrama final de forma direta, no modo de 4 bits. Os pinos de controle (RS e Enable) e o barramento de dados (D4–D7) foram mapeados para os pinos A0 a A5 do Arduino. Como esses pinos analógicos também operam perfeitamente como GPIOs (saídas digitais), essa configuração remove a necessidade do módulo I2C adicional, remove o chip PCF8574 e toda a fiação intermediária entre ele e o LCD e remove a dependência da ligação serial discreta, que se mostrou instável. O pino R/W do LCD foi permanentemente aterrado, já que o sistema fará apenas operações de escrita na tela.
 
 ---
 
@@ -195,33 +195,43 @@ Na segunda parte, a rotina repete a operação, mas calculando em `font_pb`, len
 
 ## Parte IV: Documentação de Software — `game.S`
 
-### 5.1. sorteia_carta — Distribuição e sorteio das cartas
+## 1. Visão Geral
 
-A lógica do jogo funciona com uma função `sorteia_carta` que realizará a distribuição em sorteio das cartas para o jogador e a banca, esse sorteio é realizado com uma variavel `rng_state` que tem os seus bits deslocados para a direita, depois disso, utilizaremos uma subtração sucessiva do 13 (que seria equivalente a dividir por 13) até retornar um valor entre 0 e 12, somando 1 unidade em seguida.
+Este arquivo é responsável por toda a lógica do jogo. É ele que cuida do sorteio das cartas, da conversão de cada carta no seu valor, do somatório dos pontos de cada mão e das regras que decidem o andamento da rodada, incluindo a compra da terceira carta e a definição do vencedor.
 
-### 5.2. valor_carta — Verificação do valor da carta
+As funções recebem valores nos registradores, fazem o seu cálculo e devolvem o resultado, mantendo a lógica do jogo separada da parte de interrupções e de exibição, permitindo que cada regra seja testada de forma isolada.
 
-Depois, a função `valor_carta` irá verificar o valor, em que, se for de 1 a 9 ela devolve o próprio numero, se for 10,11,12 ou 13 devolve 0, que são os valores das respectivas cartas no jogo.
+---
 
-### 5.3. calcula_pontuacao — Somatório dos pontos da mão
+## 2. Rotinas
 
-Para saber quanto cada um tem criamos a função `calcula_pontuacao` que vai utilizar os registradores r24, r22 e r20 (para representar a terceira carta) que converte cada uma e soma tudo, como o jogo não pode passar de 9, realizamos o modulo de 10 caso a soma seja maior de 10.
+### 2.1. sorteia_carta — Distribuição e sorteio das cartas
 
-### 5.4. checa_natural — Busca por 8 ou 9 iniciais
+A função `sorteia_carta` é responsável pela distribuição e pelo sorteio das cartas do jogador e da banca. O sorteio parte da variável `rng_state`, que tem os seus bits deslocados para a direita; em seguida, aplicamos uma subtração sucessiva de 13 (equivalente a dividir por 13) até obter um valor entre 0 e 12, ao qual somamos 1 unidade. O resultado é o rank da carta, de 1 a 13.
 
-A função `checa_natural` busca um natural no bacará, se for 8 ou 9 bloqueando a compra de novas cartas e indo para o resultado final.
+### 2.2. valor_carta — Verificação do valor da carta
 
-### 5.5. decide_simples — Regra básica da terceira carta
+Depois, a função `valor_carta` converte o rank no valor que a carta tem no jogo: se estiver entre 1 e 9, devolve o próprio número; se for 10, 11, 12 ou 13, devolve 0.
 
-Diante disso, dividimos a regra da terceira carta em `decide_simples` e `decide_banca_p3`, na `decide_simples` verifica se tem de 0 a 5, se tiver é obrigado a comprar, caso contrário, é obrigado a parar.
+### 2.3. calcula_pontuacao — Somatório dos pontos da mão
 
-### 5.6. decide_banca_p3 — Tabela rigorosa de compra da banca
+Para saber a pontuação de cada lado, criamos a função `calcula_pontuacao`, que recebe até três cartas nos registradores `r24`, `r22` e `r20` (este último para representar a terceira carta, quando houver). A rotina converte cada carta no seu valor e soma tudo; como a pontuação no jogo não pode passar de 9, aplicamos o módulo 10 sempre que a soma chega a 10 ou mais.
 
-Na `decide_banca_p3` se o jogador comprou uma carta a banca não usa a regra simples, ela utiliza uma tabela rigorosa que cruza o placar atual dela com o valor exato da carta que o jogador acabou de pescar, decidindo se ela compra ou fica.
+### 2.4. checa_natural — Busca por 8 ou 9 iniciais
 
-### 5.7. define_vencedor — Comparação final dos placares
+A função `checa_natural` procura um natural no bacará: se o jogador ou a banca somar 8 ou 9 nas cartas iniciais, ela bloqueia a compra de novas cartas e o jogo segue direto para o resultado final.
 
-E por fim, a `define_vencedor` (corrigido o nome do seu código) que faz uma comparação do pontos utilizando os registradores, e devolve se o jogador perdeu, ganhou, ou se foi empate
+### 2.5. decide_simples — Regra básica da terceira carta
+
+Diante disso, dividimos a regra da terceira carta em duas funções: `decide_simples` e `decide_banca_p3`. A `decide_simples` verifica o placar: se estiver entre 0 e 5, o lado é obrigado a comprar; caso contrário, é obrigado a parar.
+
+### 2.6. decide_banca_p3 — Tabela rigorosa de compra da banca
+
+Na `decide_banca_p3`, quando o jogador comprou uma carta, a banca não usa a regra simples: ela utiliza uma tabela rigorosa que cruza o seu placar atual com o valor exato da carta que o jogador acabou de comprar, decidindo entre comprar ou ficar.
+
+### 2.7. define_vencedor — Comparação final dos placares
+
+Por fim, a `define_vencedor` faz a comparação dos pontos dos dois lados utilizando os registradores e devolve o desfecho da rodada: se o jogador perdeu, ganhou ou se foi empate.
 
 ## Parte V: Documentação do Display LCD 16x2 (HD44780)
 
