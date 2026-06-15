@@ -130,8 +130,6 @@ Essa verificação de nível lógico no meio da rotina se faz estritamente neces
 ---
 
 ## 6. Integração com o main.S
-
-```assembly
 ; durante a inicializacao:
 rcall buttons_init      ; configura botoes e interrupcoes
 sei                     ; habilita interrupcoes globais (depois dos inits)
