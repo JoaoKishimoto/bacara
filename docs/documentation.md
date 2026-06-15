@@ -271,7 +271,7 @@ Como não estamos lendo a busy flag do LCD (já que o R/W está no GND), a sincr
 
 ## 5. Inicialização
 
-Para preparar o display em modo de 4 bits, o lcd_init() executa, na partida, uma sequência rígida descrita pelo datasheet da fabricante (a mesma sequência está no helper lcd_soft_reset(), reutilizado pelo lcd_clear()). Essa rotina aplica uma sequência rígida descrita pelo datasheet da fabricante: enviar o comando de reset 0x03 três vezes consecutivas, com intervalos específicos (5ms e 150µs), e por fim um 0x02. Isso é feito puramente por conta de sincronização: ele garante que o controlador interno recomece do zero e assuma um estado perfeitamente conhecido antes de configurarmos o display definitivamente para 2 linhas de texto (modo 4 bits, fonte 5x8).
+Para preparar o display em modo de 4 bits, o lcd_init() executa, na partida, uma sequência rígida descrita pelo datasheet da fabricante (a mesma sequência está no helper lcd_soft_reset(), reutilizado pelo lcd_clear()). Essa sequência: envia o comando de reset 0x03 três vezes consecutivas, com intervalos específicos (5ms e 150µs), e por fim um 0x02. Isso é feito puramente por conta de sincronização: ele garante que o controlador interno recomece do zero e assuma um estado perfeitamente conhecido antes de configurarmos o display definitivamente para 2 linhas de texto (modo 4 bits, fonte 5x8).
 
 ## 6. Header
 
