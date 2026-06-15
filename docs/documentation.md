@@ -1,114 +1,54 @@
-# Documentação — interruptions.S
+# Documentação - Projeto Bacará
+
+Este documento detalha o esquemático elétrico, as decisões de montagem do circuito físico e virtual (SimulIDE), e a implementação das rotinas de interrupção (ISRs) para a execução do jogo Bacará utilizando o microcontrolador ATmega328P. O circuito foi projetado para espelhar exatamente a montagem na protoboard física, garantindo que o código em Assembly opere de forma idêntica em ambos os ambientes.
+
+## Parte I: Especificação do Hardware
+
+### 1. Componentes Utilizados
+
+* 1x Placa Arduino Nano (ATmega328P)
+* 2x Displays de 7 Segmentos (Cátodo Comum)
+* 2x Transistores NPN (BC548 ou equivalente)
+* 1x Display LCD 16x2
+* 3x Chaves Tácteis (Push buttons)
+* 7x Resistores de 330 Ω (para os segmentos do display)
+* 3x Resistores de 1 kΩ (2 para a base dos transistores, 1 para pull-up externo)
+
+### 2. Mapeamento de Pinos
+
+A tabela abaixo descreve a alocação de portas digitais e analógicas do ATmega328P para os periféricos do sistema.
+
+| Componente | Pino Arduino | Função Específica | 
+| :--- | :--- | :--- | 
+| **Botões** | D2 | Aposta: Jogador (Interrupção INT0) | 
+| | D3 | Aposta: Banca (Interrupção INT1) | 
+| | D13 | Aposta: Empate (Interrupção PCINT5) | 
+| **Barramento 7 Seg.** | D4 ao D10 | Controle dos segmentos A até G, respectivamente. | 
+| **Multiplexação** | D11 | Chaveamento do display da Banca (Transistor Direito) | 
+| | D12 | Chaveamento do display do Jogador (Transistor Esquerdo) | 
+| **Display LCD** | A0 | Pino RS do LCD | 
+| | A1 | Pino Enable (E) do LCD | 
+| | A2 ao A5 | Pinos de dados D4, D5, D6 e D7 do LCD | 
+
+### 3. Detalhamento das Ligações
+
+#### 3.1. Botões, Pull-up Interno e Externo
+
+Os três botões foram aterrados na mesma linha de GND do circuito, operando com lógica invertida (pressionar gera nível baixo). No entanto, há uma diferença no modo como o estado lógico alto é garantido:
+
+* **Jogador (D2) e Banca (D3):** Conectados diretamente, sem resistores físicos externos. O estado alto é mantido via software pela ativação dos resistores de *pull-up* internos do ATmega328P.
+* **Empate (D13):** Utiliza um **resistor de pull-up externo de 1 kΩ** conectado à linha de 5V. Como a placa Arduino Nano possui um LED *onboard* integrado diretamente ao pino D13 (que drena corrente para a terra), o *pull-up* interno do microcontrolador é insuficiente para garantir um nível lógico alto estável. O resistor externo contorna essa limitação física da placa.
+
+#### 3.2. Displays de 7 Segmentos e Varredura
+
+Para economizar portas digitais, os dois displays de 7 segmentos compartilham o mesmo barramento de dados. Os pinos A a G do display do Jogador estão ligados em paralelo aos pinos A a G do display da Banca, protegidos por uma única barreira de resistores de 330 Ω ligada entre os pinos D4 e D10.
+
+O controle de acionamento é feito por dois transistores NPN operando como chaves no lado de baixo (aterramento). A corrente sai do pino comum (cátodo) de cada display e entra no coletor do transistor. Quando os pinos D11 ou D12 enviam nível lógico alto para a base (protegida por resistores de 1 kΩ), o transistor satura e escoa a corrente para o GND, acendendo o display selecionado naquele ciclo de varredura.
+
+#### 3.3. Interface do LCD (Alteração de Projeto)
+
+Inicialmente planejado para operar via protocolo I2C (módulo PCF8574), o diagrama final consolidou a conexão do display LCD 16x2 de forma direta no modo de 4 bits. Os pinos de controle (RS e Enable) e o barramento de dados (D4-D7) foram mapeados para as portas A0 a A5 do Arduino. Como essas portas analógicas também operam perfeitamente como GPIOs (saídas digitais), essa configuração remove a necessidade do módulo I2C adicional, simplifica a fiação na protoboard física e elimina potenciais conflitos de temporização no barramento durante a ocorrência das interrupções do jogo. O pino RW do LCD foi permanentemente aterrado, já que o sistema fará apenas operações de escrita na tela.
 
 ---
 
-## 1. O que este arquivo faz
-
-Este módulo é responsável por toda a entrada do jogador, ela serve como uma interface dos botões, ditando a lógica de interrupção ao pressinar os botões. Além disso esse arquivo é responsável pelo registro da aposta que o usuário fez.
-
-Em nosso projeto definimos rotinas de interrupção curtas, elas apenas anotam o que o jogador fez (em variáveis na SRAM) e devolvem o controle imediatamente. Toda a reação ao evento como mostrar a mensagem no LCD, distribuir as cartas, calcular resultado, fica a cargo da máquina de estados no main.S.
-
----
-
-## 2. Contexto de hardware
-
-Os três botões do jogo estão ligados no microcontrolador da seguinte forma (Botão, pino arduíno, interrupção, aposta registrada):
-
-| Função | Pino Arduino | Porta AVR | Interrupção |
-|---|---|---|---|
-| Apostar em Jogador | D2 | PD2 | INT0 (borda de descida) |
-| Apostar em Banca | D3 | PD3 | INT1 (borda de descida) |
-| Apostar em Empate | D13 | PB5 | PCINT5 (qualquer borda) |
-
-Para os botões de Jogador e Banca optamos pelos pinos de interrupção externa dedicada (INT0 e INT1), que nos permitem configurar o disparo diretamente na borda de descida, ou seja, no instante exato do aperto. Já o botão de Empate ficou num pino de pin change (PCINT), que não deixa escolher a borda do disparo, então esse detalhe vai acaber sendo tratado dentro da própria rotina.
-
----
-
-## 3. Dependências
-
-Constantes (definidas em defs.h):
-
-- BET_PLAYER, BET_BANKER, BET_TIE — códigos do tipo de aposta.
-- FLG_NEW_BET — número do bit, na variável flags, que sinaliza "aposta nova".
-
-Variáveis compartilhadas (alocadas em state.S, na .bss; este arquivo só acessa):
-
-- bet_type — recebe o código da aposta escolhida.
-- flags — tem o bit FLG_NEW_BET levantado a cada nova aposta.
-
-Vetores de interrupção utilizados (ATmega328P):
-
-- __vector_1 → INT0
-- __vector_2 → INT1
-- __vector_3 → PCINT0
-
----
-
-## 4. Rotinas
-
-### 4.1. buttons_init 
-
-Essa rotina serve para preparar os pinos dos botões e habilitar as interrupções, vai ser chamada uma única vez pelo main durante a inicialização, antes do sei. Ela não possui parâmetros nem retorno
-
-O que ela configura, em ordem:
-
-1. PD2 e PD3 como entrada — andi DDRD, 0xF3 zera os bits 2 e 3 sem afetar os demais.
-2. Pull-up em PD2 e PD3 — ori PORTD, (1<<PD2)|(1<<PD3).
-3. PB5 como entrada — andi DDRB, 0xDF zera o bit 5.
-4. Pull-up em PB5 — ori PORTB, (1<<PB5).
-5. Borda de descida para INT0 e INT1 — EICRA recebe (1<<ISC01)|(1<<ISC11)
-6. Habilita INT0 e INT1 — EIMSK recebe (1<<INT0)|(1<<INT1).
-7. Habilita o pino do pin change — PCMSK0 recebe (1<<PCINT5)
-8. Habilita o grupo de pin change — PCICR recebe (1<<PCIE0)
-
----
-
-### 4.2. __vector_1 — Interrupção INT0 (botão Jogador)
-
-Possui um disparo automático, na borda de descida de PD2.
-
-Ações Realizadas:
-
-1. Salva r24 e o registrador de status SREG na pilha.
-2. Grava BET_PLAYER em bet_type.
-3. Levanta o bit FLG_NEW_BET em flags.
-4. Restaura SREG e r24.
-5. Retorna com reti.
-
----
-
-### 4.3. __vector_2 — Interrupção INT1 (botão Banca)
-
-É exatamente a mesma coisa de "__vector_1", a única diferença é que grava BET_BANKER em bet_type.
-
----
-
-### 4.4. __vector_3 — Interrupção PCINT0 (botão Empate)
-
-Também possui um disparo automático, em qualquer mudança de estado em PB5 (tanto ao apertar quanto ao soltar)
-
-Ações:
-
-1. Salva r24 e o SREG.
-2. Confere o nível do pino com sbic PINB, PB5: se PB5 estiver em alto (botão solto), executa rjmp pcint0_fim e ignora o evento, se estiver em baixo (pressionado), prossegue.
-3. Grava BET_TIE em bet_type.
-4. Levanta FLG_NEW_BET em flags.
-5. Restaura SREG e r24, retorna com reti.
-
-Aqui verificação do tópico 2 é necessária porque o pin change dispara nas duas bordas. Sem ela, o Empate registraria a aposta duas vezes: uma ao apertar e outra ao soltar. INT0 e INT1 não precisam dessa verificação porque já são configuradas para disparar apenas na descida.
-
----
-
-## 6. Integração com o main.S
-
-
-; durante a inicializacao:
-rcall buttons_init      ; configura botoes e interrupcoes
-sei                     ; habilita interrupcoes globais (depois dos inits)
-
-; no laco principal, ao detectar jogada:
-lds  r24, flags
-sbrs r24, FLG_NEW_BET   ; bit levantado por alguma ISR?
-rjmp (sem jogada)
-; ... le bet_type, age conforme a aposta, e limpa FLG_NEW_BET ...
-
+## Parte II: Documentação de Software — `interruptions.S`
