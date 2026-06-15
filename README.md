@@ -123,8 +123,9 @@ src/
 ├── main.S              — ponto de entrada, alocação de variáveis SRAM e máquina de estados
 ├── game.S              — lógica do jogo: RNG (LFSR), pontuação, regras da 3ª carta
 ├── display.S           — multiplexação dos displays 7 segmentos via Timer2
-├── interruptionss.S    — ISRs dos botões (INT0, INT1, PCINT5)
-└── lcd_interface.c     — driver HD44780 em modo 4 bits via pinos PC0–PC5 (PORTC)
+├── interruptions.S     — ISRs dos botões (INT0, INT1, PCINT5)
+├── lcd_interface.c     — driver HD44780 em modo 4 bits via pinos PC0–PC5 (PORTC)
+└── lcd_interface.h     — protótipos públicos do driver LCD, incluído pelos módulos .S via ABI avr-gcc
 ```
 
 ### Máquina de estados (`game_state`)
