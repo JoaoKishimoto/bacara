@@ -288,3 +288,76 @@ O contrato (lcd_interface.h) expõe apenas o necessário para a lógica do jogo 
 ## 7. Interface com o Assembly
 
 A integração de dados entre a máquina de estados em Assembly e o arquivo C é baseada na convenção de chamadas (ABI avr-gcc) e em ponteiros fixos na memória. Variáveis cruciais para o rastreamento do jogo, como player_cards, banker_cards, player_count e banker_count, são marcadas como extern volatile no código em C. Quando o Assembly altera o estado da mão e precisa mostrá-la, ele chama a rotina gráfica em C; essa, por sua vez, usa as declarações externas como ponte para ir até a SRAM (Seção.bss) ler e formatar aqueles valores em caracteres. As mensagens de estado são acionadas quando o Assembly invoca a rotina passando o ID (ex: macros MSG_* através do registrador r24)
+
+---
+## Parte VI: Documentação de Software — `defs.h`
+## 1. O que este arquivo faz
+
+Cabeçalho compartilhado por todos os módulos do projeto (C e Assembly). Centraliza as constantes numéricas que os demais arquivos precisam conhecer, de forma que alterar um valor aqui se propaga para todo o sistema.
+
+---
+## 2. Grupos de definições
+
+**Máquina de estados (`game_state`):** cinco estados que representam o ciclo de uma rodada — `ST_IDLE` (aguardando aposta), `ST_BET` (aposta confirmada), `ST_DEAL` (distribuição inicial), `ST_THIRD` (terceira carta) e `ST_RESULT` (exibição do resultado).
+
+**Apostas (`bet_type`):** identificadores das três opções de aposta — `BET_PLAYER`, `BET_BANKER` e `BET_TIE` — mais `BET_NONE` para o estado sem aposta.
+
+**Resultado (`result`):** códigos de desfecho da rodada — `RES_PLAYER`, `RES_BANKER` e `RES_TIE`.
+
+**Flags (`flags`):** bit `FLG_NEW_BET` (bit 0), levantado pelas ISRs ao registrar uma aposta e consumido pelo laço principal em `main.S`.
+
+**Mensagens do LCD:** dez constantes (`MSG_PLACE_BET` a `MSG_YOU_LOSE`) usadas como argumento de `lcd_message` para selecionar o texto a exibir.
+
+**LCD e displays:** pinos de controle e dados do LCD em PORTC (A0–A5), agrupados na máscara `LCD_DDR_MASK`. Para os displays de 7 segmentos, `DISP_BLANK` (10) apaga o display e `DISP_DASH` (11) exibe um traço no estado ocioso.
+
+---
+## Parte VII: Documentação de Software — `main.S`
+## 1. O que este arquivo faz
+Ponto de entrada do firmware. Declara todas as variáveis globais do sistema na SRAM, inicializa o hardware e executa continuamente a máquina de estados que governa uma partida de Bacará.
+
+---
+## 2. Variáveis globais na SRAM (`.bss`)
+
+Declaradas como `.global` e acessadas pelos demais módulos via `lds`/`sts`.
+
+| Variável       | Tamanho | Conteúdo                                                         |
+| :------------- | :-----: | :--------------------------------------------------------------- |
+| `game_state`   | 1 byte  | Estado atual da máquina (`ST_IDLE` … `ST_RESULT`)               |
+| `bet_type`     | 1 byte  | Aposta do usuário (`BET_NONE` … `BET_TIE`)                      |
+| `player_score` | 1 byte  | Pontuação atual do Jogador (0–9)                                 |
+| `banker_score` | 1 byte  | Pontuação atual da Banca (0–9)                                   |
+| `player_cards` | 3 bytes | Ranks das cartas do Jogador; índice 2 = 0 se terceira não usada  |
+| `banker_cards` | 3 bytes | Ranks das cartas da Banca; índice 2 = 0 se terceira não usada   |
+| `player_count` | 1 byte  | Número de cartas do Jogador (2 ou 3)                             |
+| `banker_count` | 1 byte  | Número de cartas da Banca (2 ou 3)                               |
+| `rng_state`    | 2 bytes | Estado do LFSR para geração pseudoaleatória de cartas            |
+| `result`       | 1 byte  | Resultado da rodada (`RES_BANKER`, `RES_PLAYER`, `RES_TIE`)     |
+| `disp_left`    | 1 byte  | Índice de fonte do display esquerdo (Jogador)                    |
+| `disp_right`   | 1 byte  | Índice de fonte do display direito (Banca)                       |
+| `flags`        | 1 byte  | Bits de comunicação ISR→main (bit 0 = `FLG_NEW_BET`)            |
+
+---
+## 3. Rotinas
+### 3.1. main — Inicialização
+
+Configura a pilha em `RAMEND`, define os valores iniciais de todas as variáveis e chama `display_init`, `buttons_init`, `sei` e `lcd_init` nessa ordem. O `sei` é emitido antes do `lcd_init` para que o display de 7 segmentos já esteja operacional, independente do tempo de inicialização do LCD. Por fim, exibe `MSG_PLACE_BET` e cai no laço principal.
+
+---
+### 3.2. main_loop — Laço principal
+Lê `game_state` e redireciona para o tratador correspondente via cadeia de comparações. Os cinco tratadores são:
+
+- **`state_idle`:** aguarda o flag `FLG_NEW_BET` ser levantado por uma ISR; quando detectado, avança para `ST_BET`.
+- **`state_bet`:** consome `FLG_NEW_BET`, semeia o LFSR com `TCNT2` na primeira aposta da sessão e exibe a mensagem de confirmação antes de avançar para `ST_DEAL`.
+- **`state_deal`:** sorteia duas cartas para cada lado, calcula as pontuações iniciais, atualiza displays e LCD; se houver natural (8 ou 9), chama `finalize_round` diretamente, senão avança para `ST_THIRD`.
+- **`state_third`:** aplica as regras oficiais da terceira carta, usando `decide_simples` para o Jogador e `decide_banca_p3` para a Banca quando o Jogador comprou; atualiza displays e LCD e finaliza com `finalize_round`.
+- **`state_result`:** aguarda, descarta novas apostas chegadas durante a exibição, restaura as variáveis para o estado ocioso e exibe `MSG_PLACE_BET`.
+
+---
+
+### 3.3. finalize_round
+Calcula o vencedor com `define_vencedor`, exibe as pontuações finais com `lcd_scores` e depois mostra quem ganhou a rodada. Em seguida, cruza `bet_type` com `result` para determinar o desfecho do apostador: se acertou, exibe `"8 8"` nos displays e `MSG_YOU_WIN`; se errou, exibe `"0 0"` e `MSG_YOU_LOSE`. Por fim, grava `ST_RESULT` em `game_state`.
+
+---
+### 3.4. pause_2s
+Busy-wait de aproximadamente 2 segundos a 16 MHz, implementado com três laços aninhados nos registradores `r18`–`r20`. As interrupções continuam funcionando normalmente durante a pausa.
+
