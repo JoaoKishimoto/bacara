@@ -102,19 +102,7 @@ void lcd_init(void) {
     DDRC |= LCD_DDR_MASK;   /* PC0-PC5 como saída */
 
     _delay_ms(50);
-    PORTC &= ~(1<<LCD_RS_BIT);
-
-    /* Sequência de inicialização 4-bit obrigatória */
-    lcd_send4(0x03);
-    _delay_ms(5);
-    lcd_send4(0x03);
-    _delay_us(150);
-    lcd_send4(0x03);
-    lcd_send4(0x02);        /* muda para 4 bits */
-
-    lcd_cmd(0x28);
-    lcd_cmd(0x0C);
-    lcd_cmd(0x06);
+    lcd_soft_reset();
     lcd_clear();
 }
 

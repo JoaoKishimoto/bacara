@@ -71,7 +71,7 @@ main:
     ; inicializa modulos
     rcall display_init
     rcall buttons_init
-    sei     ; habilita ISRs antes do lcd_init
+    sei     ; habilita ISRs antes do lcd_init: display funciona mesmo se I2C travar
     rcall lcd_init
 
     ; mensagem inicial
