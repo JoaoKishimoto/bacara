@@ -19,7 +19,9 @@ banker_score:   .skip 1      ; 0..9
     .global player_cards
 player_cards:   .skip 3      ; ranks 1..13 (3a carta = 0 se nao usada)
 
-    .global banker_cards
+    .global banker_cardsCauã Marinho Ferreira de Almeida
+23:58
+
 banker_cards:   .skip 3
 
     .global player_count
@@ -69,7 +71,7 @@ main:
     ; inicializa modulos
     rcall display_init
     rcall buttons_init
-    sei     ; habilita ISRs antes do lcd_init: display funciona mesmo se I2C travar
+    sei     ; habilita ISRs antes do lcd_init
     rcall lcd_init
 
     ; mensagem inicial
