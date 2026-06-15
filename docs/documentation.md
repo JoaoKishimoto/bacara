@@ -49,6 +49,16 @@ O controle de acionamento é feito por dois transistores NPN operando como chave
 
 Inicialmente planejado para operar via protocolo I2C (módulo PCF8574), o diagrama final consolidou a conexão do display LCD 16x2 de forma direta no modo de 4 bits. Os pinos de controle (RS e Enable) e o barramento de dados (D4-D7) foram mapeados para as portas A0 a A5 do Arduino. Como essas portas analógicas também operam perfeitamente como GPIOs (saídas digitais), essa configuração remove a necessidade do módulo I2C adicional, simplifica a fiação na protoboard física e elimina potenciais conflitos de temporização no barramento durante a ocorrência das interrupções do jogo. O pino RW do LCD foi permanentemente aterrado, já que o sistema fará apenas operações de escrita na tela.
 
+### 4. Diagrama Virtual e Circuito Físico
+
+O espelhamento entre o ambiente de simulação e a montagem física garante a previsibilidade do código em Assembly. Abaixo, apresentamos o diagrama lógico desenvolvido no SimulIDE e a sua correspondente implementação em hardware.
+
+**Diagrama no SimulIDE:**
+![Diagrama no SimulIDE](../assets/simulIDE_circuit.png)
+
+**Circuito Físico Montado na Protoboard:**
+![Circuito Físico na Protoboard](../assets/physical_circuit.jpeg)
+
 ---
 
 ## Parte II: Documentação de Software — `interruptions.S`
