@@ -60,14 +60,14 @@ RW deve ser ligado ao GND (modo escrita permanente).
 ## Como jogar
 
 1. Ao ligar, o LCD exibe "Faca sua aposta" e os displays mostram `- -`.
-2. Pressione um dos três botões para fazer sua aposta (Jogador, Banca ou Empate).
+2. Pressione um dos três botões para fazer sua aposta, da esquerda para a direita, EmpateJogador, Banca ou Empate.
 3. O LCD confirma a aposta escolhida e distribui automaticamente as cartas.
 4. As pontuações aparecem nos displays de 7 segmentos (esquerdo = Jogador, direito = Banca) e as cartas no LCD.
 5. O jogo aplica as regras oficiais do Bacará para a terceira carta.
 6. O resultado é exibido: quem ganhou a rodada e se o apostador ganhou ou perdeu.
    - Vitória: displays mostram `8 8`
    - Derrota: displays mostram `0 0`
-7. Pressione qualquer botão para iniciar uma nova rodada.
+7. Uma nova rodada irá iniciar em 2 segundos.
 
 ### Regras do Bacará implementadas
 
